@@ -1,0 +1,69 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<h1>Реестр сотрудников</h1>
+<p><a href="/employees/new">+ Добавить сотрудника</a></p>
+
+<form method="get" action="/employees">
+  <label for="search">Поиск</label>
+  <input id="search" type="text" name="search" value="{{ search }}" placeholder="Поиск">
+  <span>Поиск по ФИО, возрасту, телефону</span>
+  <br>
+
+  <strong>Пол:</strong>
+  <label>
+    <input type="checkbox" name="male" value="true" {% if male %}checked{% endif %}>
+    Муж
+  </label>
+  <label>
+    <input type="checkbox" name="female" value="true" {% if female %}checked{% endif %}>
+    Жен
+  </label>
+  <br>
+
+  <strong>Возраст:</strong>
+  <label>
+    с <input type="number" name="age_from" min="0" value="{{ age_from }}">
+  </label>
+  <label>
+    по <input type="number" name="age_to" min="0" value="{{ age_to }}">
+  </label>
+  <button type="submit">Поиск</button>
+</form>
+
+<table>
+  <thead>
+    <tr>
+      <th>№ id</th>
+      <th>Фото</th>
+      <th>ФИО</th>
+      <th>Возраст</th>
+      <th>Телефон</th>
+      <th>Пол</th>
+      <th>Действие</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% if employees %}
+      {% for employee in employees %}
+      <tr>
+        <td>{{ employee.id }}</td>
+        <td>Фото</td>
+        <td>{{ employee.full_name }}</td>
+        <td>{{ employee.age }} лет</td>
+        <td>{{ employee.phone }}</td>
+        <td>{{ employee.sex }}</td>
+        <td><a href="#">Ред.</a> <a href="#">Удал.</a></td>
+      </tr>
+      {% endfor %}
+    {% else %}
+      <tr>
+      </tr>
+    {% endif %}
+  </tbody>
+</table>
+
+<nav>
+  <strong>Страницы:</strong> <a href="/employees?page=1">1</a>
+</nav>
+{% endblock %}
