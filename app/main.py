@@ -11,10 +11,14 @@ if __package__ in (None, ""):
     if str(project_root) not in sys.path:
         sys.path.insert(0, str(project_root))
     from app.config import get_settings
+    from app.db import Base, engine
     from app.employees import router as employees_router
+    from app import models as _models
 else:
     from .config import get_settings
+    from .db import Base, engine
     from .employees import router as employees_router
+    from . import models as _models
 
 
 def create_app() -> FastAPI:
@@ -28,6 +32,7 @@ def create_app() -> FastAPI:
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
     app.mount("/media", StaticFiles(directory=str(media_dir)), name="media")
     app.include_router(employees_router)
+    Base.metadata.create_all(bind=engine)
     return app
 
 

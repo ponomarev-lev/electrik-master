@@ -29,6 +29,13 @@
     по <input type="number" name="age_to" min="0" value="{{ age_to }}">
   </label>
   <button type="submit">Поиск</button>
+  {% if age_errors %}
+    <div>
+      {% for error in age_errors %}
+        <div>{{ error }}</div>
+      {% endfor %}
+    </div>
+  {% endif %}
 </form>
 
 <table>
@@ -48,22 +55,41 @@
       {% for employee in employees %}
       <tr>
         <td>{{ employee.id }}</td>
-        <td>Фото</td>
+        <td>
+          {% if employee.photo_url %}
+            <img src="{{ employee.photo_url }}" alt="{{ employee.photo_alt }}" class="employee-photo">
+          {% else %}
+            Нет фото
+          {% endif %}
+        </td>
         <td>{{ employee.full_name }}</td>
         <td>{{ employee.age }} лет</td>
         <td>{{ employee.phone }}</td>
-        <td>{{ employee.sex }}</td>
-        <td><a href="#">Ред.</a> <a href="#">Удал.</a></td>
+        <td><span class="{{ employee.sex_class }}">{{ employee.sex_label }}</span></td>
+        <td>
+          <a href="/employees/{{ employee.id }}/edit">Ред.</a>
+          <form method="post" action="/employees/{{ employee.id }}/delete" class="inline-form">
+            <button type="submit">Удал.</button>
+          </form>
+        </td>
       </tr>
       {% endfor %}
     {% else %}
       <tr>
+        <td colspan="7">Сотрудники не найдены.</td>
       </tr>
     {% endif %}
   </tbody>
 </table>
 
 <nav>
-  <strong>Страницы:</strong> <a href="/employees?page=1">1</a>
+  <strong>Страницы:</strong>
+  {% for link in page_links %}
+    {% if link.is_current %}
+      <strong>{{ link.number }}</strong>
+    {% else %}
+      <a href="{{ link.url }}">{{ link.number }}</a>
+    {% endif %}
+  {% endfor %}
 </nav>
 {% endblock %}

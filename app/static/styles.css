@@ -16,3 +16,30 @@ td {
   text-align: left;
   vertical-align: top;
 }
+
+.sex-male {
+  color: #0000ff;
+}
+
+.sex-female {
+  color: #d63384;
+}
+
+.employee-photo {
+  width: 36px;
+  height: 36px;
+  object-fit: cover;
+  transform-origin: left top;
+}
+
+.employee-photo:hover {
+  position: relative;
+  z-index: 10;
+  transform: scale(3);
+}
+
+.inline-form {
+  display: inline;
+  margin: 0;
+  padding: 0;
+}
