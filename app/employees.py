@@ -4,16 +4,20 @@ from dataclasses import dataclass
 from math import ceil
 from pathlib import Path
 from urllib.parse import urlencode
+from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .config import get_settings
 from .db import get_db
 from .models import Employee
+from .schemas import EmployeePayload
+from .validation import read_and_validate_photo
 
 
 router = APIRouter()
@@ -88,6 +92,73 @@ def _to_list_item(employee: Employee, age: int) -> EmployeeListItem:
         photo_url=photo_url,
         photo_alt=employee.full_name,
     )
+
+
+def _empty_form_employee() -> dict[str, str]:
+    return {
+        "last_name": "",
+        "first_name": "",
+        "middle_name": "",
+        "phone": "",
+        "birth_date": "",
+        "sex": "",
+    }
+
+
+def _extract_validation_errors(error: ValidationError) -> dict[str, str]:
+    errors: dict[str, str] = {}
+    for item in error.errors():
+        field = str(item["loc"][-1])
+        if field not in errors:
+            errors[field] = item["msg"]
+    return errors
+
+
+def _photo_url(photo_path: str | None) -> str | None:
+    return f"/media/{photo_path}" if photo_path else None
+
+
+def _save_photo_bytes(content: bytes, suffix: str) -> str:
+    media_dir = Path(settings.media_dir)
+    media_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"{uuid4().hex}.{suffix}"
+    target = media_dir / filename
+    target.write_bytes(content)
+    return filename
+
+
+def _remove_photo_file(photo_path: str | None) -> None:
+    if not photo_path:
+        return
+    target = Path(settings.media_dir) / photo_path
+    if target.exists() and target.is_file():
+        target.unlink()
+
+
+def _is_phone_busy(db: Session, phone: str, exclude_employee_id: int | None = None) -> bool:
+    stmt = select(Employee).where(Employee.phone == phone)
+    if exclude_employee_id is not None:
+        stmt = stmt.where(Employee.id != exclude_employee_id)
+    return db.execute(stmt).scalar_one_or_none() is not None
+
+
+def _form_employee_payload(
+    *,
+    last_name: str,
+    first_name: str,
+    middle_name: str,
+    phone: str,
+    birth_date: str,
+    sex: str,
+) -> dict[str, str]:
+    return {
+        "last_name": last_name,
+        "first_name": first_name,
+        "middle_name": middle_name,
+        "phone": phone,
+        "birth_date": birth_date,
+        "sex": sex,
+    }
 
 
 @router.get("/", include_in_schema=False)
@@ -201,10 +272,84 @@ def employee_create_form(request: Request) -> object:
         name="employees/form.html",
         context={
             "mode": "create",
-            "employee": {},
+            "employee": _empty_form_employee(),
             "errors": {},
+            "form_action": "/employees/new",
+            "current_photo_url": None,
         },
     )
+
+
+@router.post("/employees/new")
+async def employee_create_submit(
+    request: Request,
+    db: Session = Depends(get_db),
+    last_name: str = Form(default=""),
+    first_name: str = Form(default=""),
+    middle_name: str = Form(default=""),
+    phone: str = Form(default=""),
+    birth_date: str = Form(default=""),
+    sex: str = Form(default=""),
+    photo: UploadFile | None = File(default=None),
+) -> object:
+    employee_data = _form_employee_payload(
+        last_name=last_name,
+        first_name=first_name,
+        middle_name=middle_name,
+        phone=phone,
+        birth_date=birth_date,
+        sex=sex,
+    )
+
+    errors: dict[str, str] = {}
+    payload: EmployeePayload | None = None
+    photo_bytes: bytes | None = None
+    photo_suffix: str | None = None
+
+    try:
+        payload = EmployeePayload(**employee_data)
+        employee_data["phone"] = payload.phone
+    except ValidationError as error:
+        errors.update(_extract_validation_errors(error))
+
+    try:
+        photo_bytes, photo_suffix = await read_and_validate_photo(photo)
+    except ValueError as error:
+        errors["photo"] = str(error)
+
+    if payload is not None and _is_phone_busy(db, payload.phone):
+        errors["phone"] = "Сотрудник с таким телефоном уже существует."
+
+    if errors or payload is None:
+        return templates.TemplateResponse(
+            request=request,
+            name="employees/form.html",
+            context={
+                "mode": "create",
+                "employee": employee_data,
+                "errors": errors,
+                "form_action": "/employees/new",
+                "current_photo_url": None,
+            },
+            status_code=400,
+        )
+
+    photo_path: str | None = None
+    if photo_bytes is not None and photo_suffix is not None:
+        photo_path = _save_photo_bytes(photo_bytes, photo_suffix)
+
+    employee = Employee(
+        last_name=payload.last_name,
+        first_name=payload.first_name,
+        middle_name=payload.middle_name,
+        phone=payload.phone,
+        birth_date=payload.birth_date,
+        sex=payload.sex,
+        photo_path=photo_path,
+    )
+    db.add(employee)
+    db.commit()
+    return RedirectResponse(url="/employees", status_code=303)
 
 
 @router.get("/employees/{employee_id}/edit")
@@ -232,8 +377,86 @@ def employee_edit_form(
                 "sex": employee.sex,
             },
             "errors": {},
+            "form_action": f"/employees/{employee.id}/edit",
+            "current_photo_url": _photo_url(employee.photo_path),
         },
     )
+
+
+@router.post("/employees/{employee_id}/edit")
+async def employee_edit_submit(
+    request: Request,
+    employee_id: int,
+    db: Session = Depends(get_db),
+    last_name: str = Form(default=""),
+    first_name: str = Form(default=""),
+    middle_name: str = Form(default=""),
+    phone: str = Form(default=""),
+    birth_date: str = Form(default=""),
+    sex: str = Form(default=""),
+    photo: UploadFile | None = File(default=None),
+) -> object:
+    employee = db.get(Employee, employee_id)
+    if employee is None:
+        raise HTTPException(status_code=404, detail="Сотрудник не найден.")
+
+    employee_data = _form_employee_payload(
+        last_name=last_name,
+        first_name=first_name,
+        middle_name=middle_name,
+        phone=phone,
+        birth_date=birth_date,
+        sex=sex,
+    )
+    employee_data["id"] = str(employee_id)
+
+    errors: dict[str, str] = {}
+    payload: EmployeePayload | None = None
+    photo_bytes: bytes | None = None
+    photo_suffix: str | None = None
+
+    try:
+        payload = EmployeePayload(**employee_data)
+        employee_data["phone"] = payload.phone
+    except ValidationError as error:
+        errors.update(_extract_validation_errors(error))
+
+    try:
+        photo_bytes, photo_suffix = await read_and_validate_photo(photo)
+    except ValueError as error:
+        errors["photo"] = str(error)
+
+    if payload is not None and _is_phone_busy(db, payload.phone, exclude_employee_id=employee.id):
+        errors["phone"] = "Сотрудник с таким телефоном уже существует."
+
+    if errors or payload is None:
+        return templates.TemplateResponse(
+            request=request,
+            name="employees/form.html",
+            context={
+                "mode": "edit",
+                "employee": employee_data,
+                "errors": errors,
+                "form_action": f"/employees/{employee.id}/edit",
+                "current_photo_url": _photo_url(employee.photo_path),
+            },
+            status_code=400,
+        )
+
+    if photo_bytes is not None and photo_suffix is not None:
+        previous_photo_path = employee.photo_path
+        employee.photo_path = _save_photo_bytes(photo_bytes, photo_suffix)
+        _remove_photo_file(previous_photo_path)
+
+    employee.last_name = payload.last_name
+    employee.first_name = payload.first_name
+    employee.middle_name = payload.middle_name
+    employee.phone = payload.phone
+    employee.birth_date = payload.birth_date
+    employee.sex = payload.sex
+
+    db.commit()
+    return RedirectResponse(url="/employees", status_code=303)
 
 
 @router.post("/employees/{employee_id}/delete")
@@ -243,6 +466,7 @@ def employee_delete(
 ) -> RedirectResponse:
     employee = db.get(Employee, employee_id)
     if employee is not None:
+        _remove_photo_file(employee.photo_path)
         db.delete(employee)
         db.commit()
     return RedirectResponse(url="/employees", status_code=303)

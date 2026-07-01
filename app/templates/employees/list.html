@@ -68,7 +68,7 @@
         <td><span class="{{ employee.sex_class }}">{{ employee.sex_label }}</span></td>
         <td>
           <a href="/employees/{{ employee.id }}/edit">Ред.</a>
-          <form method="post" action="/employees/{{ employee.id }}/delete" class="inline-form">
+          <form method="post" action="/employees/{{ employee.id }}/delete" class="inline-form" onsubmit="return confirm('Вы действительно хотите удалить сотрудника?')">
             <button type="submit">Удал.</button>
           </form>
         </td>

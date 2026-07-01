@@ -3,40 +3,51 @@
 {% block content %}
 <h1>{% if mode == "edit" %}Редактирование сотрудника{% else %}Создание сотрудника{% endif %}</h1>
 
-<form method="post" enctype="multipart/form-data">
+<form method="post" enctype="multipart/form-data" action="{{ form_action }}">
   <p>
     <label for="last_name">Фамилия *</label><br>
     <input id="last_name" type="text" name="last_name" maxlength="100" value="{{ employee.get('last_name', '') }}">
+    {% if errors.get("last_name") %}<br>{{ errors.get("last_name") }}{% endif %}
   </p>
   <p>
     <label for="first_name">Имя *</label><br>
     <input id="first_name" type="text" name="first_name" maxlength="100" value="{{ employee.get('first_name', '') }}">
+    {% if errors.get("first_name") %}<br>{{ errors.get("first_name") }}{% endif %}
   </p>
   <p>
     <label for="middle_name">Отчество</label><br>
     <input id="middle_name" type="text" name="middle_name" maxlength="100" value="{{ employee.get('middle_name', '') }}">
+    {% if errors.get("middle_name") %}<br>{{ errors.get("middle_name") }}{% endif %}
   </p>
   <p>
     <label for="phone">Телефон *</label><br>
     <input id="phone" type="tel" name="phone" value="{{ employee.get('phone', '') }}">
+    {% if errors.get("phone") %}<br>{{ errors.get("phone") }}{% endif %}
   </p>
   <p>
     <label for="birth_date">Дата рождения *</label><br>
     <input id="birth_date" type="date" name="birth_date" value="{{ employee.get('birth_date', '') }}">
+    {% if errors.get("birth_date") %}<br>{{ errors.get("birth_date") }}{% endif %}
   </p>
   <p>
     <label for="sex">Пол *</label><br>
     <select id="sex" name="sex">
-      <option value="">Выберите пол</option>
+      <option value="" {% if not employee.get('sex') %}selected{% endif %}>Выберите пол</option>
       <option value="male" {% if employee.get('sex') == 'male' %}selected{% endif %}>Мужской</option>
       <option value="female" {% if employee.get('sex') == 'female' %}selected{% endif %}>Женский</option>
     </select>
+    {% if errors.get("sex") %}<br>{{ errors.get("sex") }}{% endif %}
   </p>
   <p>
     <label for="photo">Фото</label><br>
     <input id="photo" type="file" name="photo" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp">
     <br>
     <small>Максимальный размер файла: 200 КБ</small>
+    {% if current_photo_url %}
+      <br>
+      <img src="{{ current_photo_url }}" alt="Текущее фото" class="employee-photo">
+    {% endif %}
+    {% if errors.get("photo") %}<br>{{ errors.get("photo") }}{% endif %}
   </p>
 
   <button type="submit">Сохранить</button>
